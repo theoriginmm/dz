@@ -1,0 +1,50 @@
+# docker run -d -p 27017:27017 -v $(pwd):/dataeng --name mongo mongo:latest
+
+# mongoimport --drop -c companies --uri mongodb://127.0.0.1/samples companies.json
+
+#idf step could be filtered
+
+db.word_tf.drop()
+db.companies.mapReduce(
+    function() {
+        if (this.overview) {
+            var words = this.overview.split(" ")
+            var numOfWords = words.length
+            for (var i = 0; i < numOfWords; i++) {
+                emit(this._id.str + "_" + words[i], 1.0/numOfWords)
+            }
+        }
+    },
+    function(key, values) {
+        return Array.sum(values)
+    },
+    {
+        out: 'word_tf'
+    }
+)
+
+
+db.word_idf.drop()
+db.word_tf.mapReduce(
+    function() {
+        var splitKey = this._id.split("_")
+        var word = splitKey.slice("1").join()
+        var id = splitKey[0]
+        emit(word,id + '_' + this.value)
+    },
+    function(key, values) {
+        var idf = Math.log(numOfDocs/values.length)
+        values.forEach(function(part, index){
+            var split = this[index].split("_")
+            split[1] = parseFloat(split[1]) * idf
+            this[index] = split.join("_")
+        }, values)
+        return values.join(";")
+    },
+    {
+        out: 'word_idf',
+        scope: {
+            numOfDocs : db.companies.count()
+        }
+    }
+)
