@@ -1,11 +1,13 @@
 # docker run -d -p 27017:27017 -v $(pwd):/dataeng --name mongo mongo:latest
 
-# mongoimport --drop -c companies --uri mongodb://127.0.0.1/samples companies.json
+# mongoimport --drop -c example --uri mongodb://127.0.0.1/example example.json
 
-#idf step could be filtered
+# tf step could be filtered
 
+use example
+db.example.find()
 db.word_tf.drop()
-db.companies.mapReduce(
+db.example.mapReduce(
     function() {
         if (this.overview) {
             var words = this.overview.split(" ")
@@ -22,6 +24,7 @@ db.companies.mapReduce(
         out: 'word_tf'
     }
 )
+db.word_tf.find()
 
 
 db.word_idf.drop()
@@ -33,18 +36,28 @@ db.word_tf.mapReduce(
         emit(word,id + '_' + this.value)
     },
     function(key, values) {
-        var idf = Math.log(numOfDocs/values.length)
         values.forEach(function(part, index){
             var split = this[index].split("_")
-            split[1] = parseFloat(split[1]) * idf
+            split[1] = parseFloat(split[1])
             this[index] = split.join("_")
         }, values)
         return values.join(";")
     },
     {
         out: 'word_idf',
+        finalize: function(key, reducedVal) {
+                        var splitted = reducedVal.split(";")
+                        var idf = Math.log(numOfDocs/splitted.length)
+                        splitted.forEach(function(part, index){
+                            var element = this[index].split("_")
+                            element[1] = parseFloat(element[1]) * idf
+                            this[index] = element.join("_")
+                        },splitted)
+                        return splitted.join(";");
+                  },
         scope: {
-            numOfDocs : db.companies.count()
+            numOfDocs : db.example.count()
         }
     }
 )
+db.word_idf.find()
